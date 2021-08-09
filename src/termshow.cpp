@@ -54,7 +54,6 @@ string type2str(int type) {
 }
 
 string block_char(const cv::Mat &frame, size_t block_x, size_t block_y) {
-  clog << "Frame type: " << (frame.type()) << "\n";
 
   // We take advantage of the Braille charset's ordering:
   // The lower 8 bits are a bitmask of the 8 dots of the character.
@@ -116,8 +115,6 @@ void termshow(const cv::Mat &frame, uint32_t width, uint32_t height) {
     for (size_t col = 0; col < width; col++) {
       size_t block_x = col * 2;
       size_t block_y = line * 4;
-
-      clog << "Drawing block at (" << block_x << ", " << block_y << ")\n";
 
       cout << block_char(frame3, block_x, block_y);
     }

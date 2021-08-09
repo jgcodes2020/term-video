@@ -20,22 +20,19 @@
 #include <type_traits>
 #include <utility>
 #include <thread>
+#include <future>
 
 using std::string, std::cout, std::cin, std::clog;
 
 namespace chr = std::chrono;
 using namespace std::literals::chrono_literals;
+namespace this_thread = std::this_thread;
 
 int main(int argc, char* argv[]) {
-  term::smcup smcup;
-  // Local to this function, but accessible from SIGWINCH handler
+  term::setup smcup;
+  // Flags
   static std::atomic<uint32_t> term_cwidth;
   static std::atomic<uint32_t> term_cheight;
-  
-  cv::VideoCapture video(argv[1]);
-  cout << "Video dimensions: " << video.get(cv::CAP_PROP_FRAME_WIDTH) << "x";
-  cout << video.get(cv::CAP_PROP_FRAME_HEIGHT) << "\n";
-  
   {
     winsize s = term::size();
     term_cwidth = s.ws_col;
@@ -48,31 +45,41 @@ int main(int argc, char* argv[]) {
     });
   }
   
+  static std::atomic<bool> run_flag(true);
   
-  if (!video.isOpened()) {
-    cout << "Could not open video\n";
-    exit(-1);
+  auto render_thread = std::async(std::launch::async, [&argv]() {
+    cv::VideoCapture video(argv[1]);
+    cout << "Video dimensions: " << video.get(cv::CAP_PROP_FRAME_WIDTH) << "x";
+    cout << video.get(cv::CAP_PROP_FRAME_HEIGHT) << "\n";
+    
+    if (!video.isOpened()) {
+      cout << "Could not open video\n";
+      exit(-1);
+    }
+    chr::time_point<chr::steady_clock> time = chr::steady_clock::now();
+    while (run_flag) {
+      cv::Mat frame;
+      cv::Mat frame2;
+      video >> frame;
+      
+      if (frame.empty()) break;
+      
+      cv::cvtColor(frame, frame2, cv::COLOR_BGR2GRAY);
+      term::termshow(frame2, term_cwidth, term_cheight);
+      
+      chr::time_point<chr::steady_clock> time2 = chr::steady_clock::now();
+      if ((time2 - time) < 33ms) {
+        this_thread::sleep_for((time + 33ms) - time2);
+      }
+      time = chr::steady_clock::now();
+    }
+  });
+  
+  while (cin.get() != '\e') {
+    this_thread::sleep_for(50ms);
+    if (render_thread.wait_for(0ms) == std::future_status::ready) {
+      break;
+    }
   }
-  chr::time_point<chr::steady_clock> time = chr::steady_clock::now();
-  long total_frames = 0;
-  long frame_count = 0;
-  while (true) {
-    cv::Mat frame;
-    cv::Mat frame2;
-    video >> frame;
-    
-    if (frame.empty()) break;
-    
-    cv::cvtColor(frame, frame2, cv::COLOR_BGR2GRAY);
-    
-    term::termshow(frame2, term_cwidth, term_cheight);
-    
-    chr::time_point<chr::steady_clock> time2 = chr::steady_clock::now();
-    frame_count++;
-    total_frames += chr::duration_cast<chr::milliseconds>(time2 - time).count();
-  }
-  term::clear();
-  cout << "Avg. frame time: " << (total_frames / frame_count) << "ms";
-  cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-  cv::destroyAllWindows();
+  run_flag = false;
 }

@@ -15,3 +15,6 @@ target_include_directories(main
   PUBLIC include
 )
 target_link_libraries(main ${OpenCV_LIBS})
+if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+  target_link_libraries(main pthread)
+endif()
