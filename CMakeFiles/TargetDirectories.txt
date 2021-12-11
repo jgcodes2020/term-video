@@ -1,3 +1,0 @@
-/home/jgcodes2020/LProjects/badapple-term/CMakeFiles/rebuild_cache.dir
-/home/jgcodes2020/LProjects/badapple-term/CMakeFiles/test.dir
-/home/jgcodes2020/LProjects/badapple-term/CMakeFiles/edit_cache.dir
