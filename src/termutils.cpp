@@ -6,7 +6,6 @@
 #include <iostream>
 #include <ostream>
 
-
 using std::cout, std::flush;
 
 namespace term {
@@ -16,7 +15,7 @@ namespace term {
     // 3. clear scrollback
     // 4. reset cursor
     cout << "\e[?1049h\e[2J\e[3J\e[1;1H" << flush;
-    
+
     // Disable canonical input and echo
     tcgetattr(STDOUT_FILENO, &old);
     struct termios curr = old;
@@ -29,21 +28,21 @@ namespace term {
     // Re-enable canonical input and echo
     tcsetattr(STDOUT_FILENO, TCSANOW, &old);
   }
-  
+
   void clear() {
     // 1. clear screen
     // 2. clear scrollback
     // 3. reset cursor
     cout << "\e[2J\e[3J\e[1;1H" << flush;
   }
-  
+
   winsize size() {
     winsize ws;
     ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws);
     return ws;
   }
-  
+
   void move_to(unsigned short row, unsigned short col) {
     cout << "\e[" << row << ";" << col << "H" << flush;
   };
-}
+}  // namespace term
