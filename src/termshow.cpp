@@ -1,3 +1,4 @@
+#include <array>
 #include <codecvt>
 #include <cstdint>
 #include <iostream>
@@ -5,13 +6,13 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <badapple/termshow.hpp>
 #include <badapple/termutils.hpp>
-#include <opencv2/core/base.hpp>
-#include <opencv2/core/types.hpp>
-#include <opencv2/imgproc.hpp>
+#include <opencv2/opencv.hpp>
 
-using std::string, std::cout, std::clog;
+using std::string, std::string_view, std::cout, std::clog;
+using namespace std::string_literals;
 
 namespace {
   string type2str(int type) {
@@ -53,49 +54,58 @@ namespace {
     return r;
   }
 
-  string block_char(const cv::Mat& frame, size_t block_x, size_t block_y) {
+  string block_char(
+    const cv::Mat& bw_frame, const cv::Mat& cl_frame, size_t block_x,
+    size_t block_y) {
     // We take advantage of the Braille charset's ordering:
     // The lower 8 bits are a bitmask of the 8 dots of the character.
     char32_t codepoint = 0x2800;
-    
+
+    // whether the specified x-offset is in the image bounds
     std::array<bool, 2> xf = {
-      (block_x + 0) <= frame.cols,
-      (block_x + 1) <= frame.cols
-    };
+      (block_x + 0) <= bw_frame.cols, (block_x + 1) <= bw_frame.cols};
+    // whether the specified y-offset is in the image bounds
     std::array<bool, 4> yf = {
-      (block_y + 0) <= frame.rows,
-      (block_y + 1) <= frame.rows,
-      (block_y + 2) <= frame.rows,
-      (block_y + 3) <= frame.rows,
+      (block_y + 0) <= bw_frame.rows,
+      (block_y + 1) <= bw_frame.rows,
+      (block_y + 2) <= bw_frame.rows,
+      (block_y + 3) <= bw_frame.rows,
     };
-
-    bool x0_in = (block_x) <= frame.cols;
-    bool x1_in = (block_x + 1) <= frame.cols;
-    bool y0_in = (block_y) <= frame.rows;
-    bool y1_in = (block_y + 1) <= frame.rows;
-    bool y2_in = (block_y + 2) <= frame.rows;
-    bool y3_in = (block_y + 3) <= frame.rows;
-
-    if ((xf[0] & yf[0]) && frame.at<uchar>(block_y, block_x) > 0x00)
-      codepoint |= 0x01;
-    if ((xf[0] & yf[1]) && frame.at<uchar>(block_y + 1, block_x) > 0x00)
-      codepoint |= 0x02;
-    if ((xf[0] & yf[2]) && frame.at<uchar>(block_y + 2, block_x) > 0x00)
-      codepoint |= 0x04;
-    if ((xf[1] & yf[0]) && frame.at<uchar>(block_y, block_x + 1) > 0x00)
-      codepoint |= 0x08;
-    if ((xf[1] & yf[1]) && frame.at<uchar>(block_y + 1, block_x + 1) > 0x00)
-      codepoint |= 0x10;
-    if ((xf[1] & yf[2]) && frame.at<uchar>(block_y + 2, block_x + 1) > 0x00)
-      codepoint |= 0x20;
-    if ((xf[0] & yf[3]) && frame.at<uchar>(block_y + 3, block_x) > 0x00)
-      codepoint |= 0x40;
-    if ((xf[1] & yf[3]) && frame.at<uchar>(block_y + 3, block_x + 1) > 0x00)
-      codepoint |= 0x80;
-
-    // Manual UTF-8 encoding of the codepoint
-    static std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t> encoder;
-    return encoder.to_bytes(&codepoint, &codepoint + 1);
+    std::array<uchar, 8> b_pixels = {
+      bw_frame.at<uchar>(block_y + 0, block_x + 0) > 0x00,
+      bw_frame.at<uchar>(block_y + 1, block_x + 0) > 0x00,
+      bw_frame.at<uchar>(block_y + 2, block_x + 0) > 0x00,
+      bw_frame.at<uchar>(block_y + 0, block_x + 1) > 0x00,
+      bw_frame.at<uchar>(block_y + 1, block_x + 1) > 0x00,
+      bw_frame.at<uchar>(block_y + 2, block_x + 1) > 0x00,
+      bw_frame.at<uchar>(block_y + 3, block_x + 0) > 0x00,
+      bw_frame.at<uchar>(block_y + 3, block_x + 1) > 0x00};
+    std::array<uint32_t, 8> c_pixels {
+      cl_frame.at<uchar>(block_y + 0, block_x + 0),
+      cl_frame.at<uchar>(block_y + 1, block_x + 0),
+      cl_frame.at<uchar>(block_y + 2, block_x + 0),
+      cl_frame.at<uchar>(block_y + 0, block_x + 1),
+      cl_frame.at<uchar>(block_y + 1, block_x + 1),
+      cl_frame.at<uchar>(block_y + 2, block_x + 1),
+      cl_frame.at<uchar>(block_y + 3, block_x + 0),
+      cl_frame.at<uchar>(block_y + 3, block_x + 1)};
+    // Optimized character encoding.
+    // In UTF-8, Braille characters will be encoded as:
+    // 1110 0010 1010 00xx 10xx xxxx`
+    string block = "\xE2\xA0\x80"s;
+    {
+      block[1] |= b_pixels[7] << 1;
+      block[1] |= b_pixels[6] << 0;
+      block[2] |= b_pixels[5] << 5;
+      block[2] |= b_pixels[4] << 4;
+      block[2] |= b_pixels[3] << 3;
+      block[2] |= b_pixels[2] << 2;
+      block[2] |= b_pixels[1] << 1;
+      block[2] |= b_pixels[0] << 0;
+    }
+    
+    
+    return block;
   }
 }  // namespace
 
@@ -116,7 +126,8 @@ namespace term {
 
     cv::resize(
       frame, frame2, cv::Size(), scale_factor, scale_factor, interp_flag);
-    cv::threshold(frame2, frame3, 127, 255, cv::THRESH_BINARY);
+    cv::cvtColor(frame2, frame3, cv::COLOR_BGR2GRAY);
+    cv::threshold(frame3, frame2, 127, 255, cv::THRESH_BINARY);
 
     term::move_to(1, 1);
 
@@ -125,7 +136,7 @@ namespace term {
         size_t block_x = col * 2;
         size_t block_y = line * 4;
 
-        cout << block_char(frame3, block_x, block_y);
+        cout << block_char(frame3, frame2, block_x, block_y);
       }
       if (line + 1 < height) {
         cout << "\n";

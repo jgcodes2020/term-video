@@ -1,0 +1,7 @@
+[requires]
+fmt/8.0.1
+opencv/4.5.3
+[options]
+opencv:with_ffmpeg=True
+[generators]
+cmake
