@@ -51,6 +51,10 @@ int main(int argc, char* argv[]) {
   }
   std::ofstream logfile("cv_buildinfo.txt");
   logfile << cv::getBuildInformation();
+  
+  if (argc < 2) {
+    return 0;
+  }
 
   static std::atomic<bool> run_flag(true);
 
