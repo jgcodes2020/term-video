@@ -33,7 +33,7 @@ namespace term {
     ~setup() {
       if (active) {
         // switch to main buffer
-        std::cout << "\e[?1049l" << std::flush;
+        std::cout << "\e[?1049l\e[0m" << std::flush;
         // Re-enable canonical input and echo
         tcsetattr(STDOUT_FILENO, TCSANOW, &old);
         active = false;

@@ -8,6 +8,7 @@
 #include <fstream>
 #include <ratio>
 #include <opencv2/core/utility.hpp>
+#include <opencv2/highgui.hpp>
 #include <opencv2/opencv.hpp>
 
 #include <badapple/termshow.hpp>
@@ -32,7 +33,7 @@ namespace chr = std::chrono;
 using namespace std::literals::chrono_literals;
 namespace this_thread = std::this_thread;
 
-term::setup _guard_;
+term::setup _guard_(false);
 
 int main(int argc, char* argv[]) {
   // Flags
@@ -49,51 +50,34 @@ int main(int argc, char* argv[]) {
       term_cheight = s.ws_row;
     });
   }
-  std::ofstream logfile("cv_buildinfo.txt");
-  logfile << cv::getBuildInformation();
   
   if (argc < 2) {
     return 0;
   }
 
   static std::atomic<bool> run_flag(true);
-
-  auto render_thread = std::async(std::launch::async, [&argv]() {
-    if (!std::filesystem::exists(argv[1])) {
-      std::cerr << "where video\n";
-      run_flag = false;
-    }
-
-    cv::VideoCapture video;
-    if (!video.open(argv[1], cv::CAP_FFMPEG)) {
-      std::cerr << "Can't open video. What's up?\n";
-      run_flag = false;
-    }
-
-    clog << "Video dimensions: " << video.get(cv::CAP_PROP_FRAME_WIDTH) << "x";
-    clog << video.get(cv::CAP_PROP_FRAME_HEIGHT) << "\n";
-    chr::time_point<chr::steady_clock> time = chr::steady_clock::now();
+  
+  std::thread render([&] {
+    cv::VideoCapture video {argv[1]};
+    auto frame_time = (1000ms / video.get(cv::CAP_PROP_FPS));
+    if (!video.isOpened()) return;
     cv::Mat frame;
+    auto time = chr::high_resolution_clock::now();
+    
+    _guard_.enable();
     while (run_flag) {
       video >> frame;
-
-      if (frame.empty())
-        break;
+      
+      if (frame.empty()) break;
       term::termshow(frame, term_cwidth, term_cheight);
-
-      chr::time_point<chr::steady_clock> time2 = chr::steady_clock::now();
-      if ((time2 - time) < 33ms) {
-        this_thread::sleep_for((time + 33ms) - time2);
-      }
-      time = chr::steady_clock::now();
+      auto now = chr::high_resolution_clock::now();
+      this_thread::sleep_for((time + frame_time) - now);
+      time = now;
     }
   });
-
-  while (cin.get() != '\e') {
-    this_thread::sleep_for(50ms);
-    if (render_thread.wait_for(0ms) == std::future_status::ready) {
-      break;
-    }
-  }
+  
+  while (cin.get() != '\e');
   run_flag = false;
+  render.join();
+  cv::destroyAllWindows();
 }

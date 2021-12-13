@@ -1,3 +1,4 @@
+#include <fmt/core.h>
 #include <array>
 #include <codecvt>
 #include <cstdint>
@@ -7,8 +8,11 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include "badapple/loop.hpp"
 #include <badapple/termshow.hpp>
 #include <badapple/termutils.hpp>
+#include <opencv2/core.hpp>
+#include <opencv2/core/matx.hpp>
 #include <opencv2/opencv.hpp>
 
 using std::string, std::string_view, std::cout, std::clog;
@@ -57,20 +61,6 @@ namespace {
   string block_char(
     const cv::Mat& bw_frame, const cv::Mat& cl_frame, size_t block_x,
     size_t block_y) {
-    // We take advantage of the Braille charset's ordering:
-    // The lower 8 bits are a bitmask of the 8 dots of the character.
-    char32_t codepoint = 0x2800;
-
-    // whether the specified x-offset is in the image bounds
-    std::array<bool, 2> xf = {
-      (block_x + 0) <= bw_frame.cols, (block_x + 1) <= bw_frame.cols};
-    // whether the specified y-offset is in the image bounds
-    std::array<bool, 4> yf = {
-      (block_y + 0) <= bw_frame.rows,
-      (block_y + 1) <= bw_frame.rows,
-      (block_y + 2) <= bw_frame.rows,
-      (block_y + 3) <= bw_frame.rows,
-    };
     std::array<uchar, 8> b_pixels = {
       bw_frame.at<uchar>(block_y + 0, block_x + 0) > 0x00,
       bw_frame.at<uchar>(block_y + 1, block_x + 0) > 0x00,
@@ -80,15 +70,15 @@ namespace {
       bw_frame.at<uchar>(block_y + 2, block_x + 1) > 0x00,
       bw_frame.at<uchar>(block_y + 3, block_x + 0) > 0x00,
       bw_frame.at<uchar>(block_y + 3, block_x + 1) > 0x00};
-    std::array<uint32_t, 8> c_pixels {
-      cl_frame.at<uchar>(block_y + 0, block_x + 0),
-      cl_frame.at<uchar>(block_y + 1, block_x + 0),
-      cl_frame.at<uchar>(block_y + 2, block_x + 0),
-      cl_frame.at<uchar>(block_y + 0, block_x + 1),
-      cl_frame.at<uchar>(block_y + 1, block_x + 1),
-      cl_frame.at<uchar>(block_y + 2, block_x + 1),
-      cl_frame.at<uchar>(block_y + 3, block_x + 0),
-      cl_frame.at<uchar>(block_y + 3, block_x + 1)};
+    std::array<cv::Vec3i, 8> c_pixels {
+      cl_frame.at<cv::Vec3b>(block_y + 0, block_x + 0),
+      cl_frame.at<cv::Vec3b>(block_y + 1, block_x + 0),
+      cl_frame.at<cv::Vec3b>(block_y + 2, block_x + 0),
+      cl_frame.at<cv::Vec3b>(block_y + 0, block_x + 1),
+      cl_frame.at<cv::Vec3b>(block_y + 1, block_x + 1),
+      cl_frame.at<cv::Vec3b>(block_y + 2, block_x + 1),
+      cl_frame.at<cv::Vec3b>(block_y + 3, block_x + 0),
+      cl_frame.at<cv::Vec3b>(block_y + 3, block_x + 1)};
     // Optimized character encoding.
     // In UTF-8, Braille characters will be encoded as:
     // 1110 0010 1010 00xx 10xx xxxx`
@@ -103,14 +93,29 @@ namespace {
       block[2] |= b_pixels[1] << 1;
       block[2] |= b_pixels[0] << 0;
     }
-    
-    
-    return block;
+
+    cv::Vec3i fg_out(0, 0, 0), all_out(0, 0, 0);
+    int fg_cnt = 0;
+    for (size_t i = 0; i < 8; i++) {
+      if (b_pixels[i] != 0) {
+        fg_out += c_pixels[i];
+        fg_cnt++;
+      }
+      all_out += c_pixels[i];
+    }
+    fg_out /= fg_cnt;
+    all_out /= 8;
+
+    return fmt::format(
+      "\e[38;2;{};{};{}m\e[48;2;{};{};{}m{}", fg_out[2], fg_out[1], fg_out[0],
+      all_out[2], all_out[1], all_out[0], block);
   }
+  string termshow_fb;
 }  // namespace
 
 namespace term {
   void termshow(const cv::Mat& frame, uint32_t width, uint32_t height) {
+    // std::cerr << type2str(frame.type()) << "\n";
     cv::Mat frame2, frame3;
 
     double fwidth  = frame.cols;
@@ -127,20 +132,26 @@ namespace term {
     cv::resize(
       frame, frame2, cv::Size(), scale_factor, scale_factor, interp_flag);
     cv::cvtColor(frame2, frame3, cv::COLOR_BGR2GRAY);
-    cv::threshold(frame3, frame2, 127, 255, cv::THRESH_BINARY);
+    
+    double minv, maxv;
+    cv::minMaxIdx(frame3, &minv, &maxv);
+    
+    cv::threshold(frame3, frame3, int((minv + maxv) / 2), 255, cv::THRESH_BINARY);
 
     term::move_to(1, 1);
-
+    
+    termshow_fb.clear();
     for (size_t line = 0; line < height; line++) {
       for (size_t col = 0; col < width; col++) {
         size_t block_x = col * 2;
         size_t block_y = line * 4;
 
-        cout << block_char(frame3, frame2, block_x, block_y);
+        termshow_fb.append(block_char(frame3, frame2, block_x, block_y));
       }
       if (line + 1 < height) {
-        cout << "\n";
+        termshow_fb.push_back('\n');
       }
     }
+    cout << termshow_fb;
   }
 }  // namespace term

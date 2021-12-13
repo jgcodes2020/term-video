@@ -1,4 +1,8 @@
 build/*
 .cache/
+
+# VIDEOS
 *.mp4
 **/*.mp4
+*.webm
+**/*.webm
