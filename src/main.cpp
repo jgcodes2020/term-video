@@ -72,11 +72,11 @@ int main(int argc, char* argv[]) {
       term::termshow(frame, term_cwidth, term_cheight);
       auto now = chr::high_resolution_clock::now();
       this_thread::sleep_for((time + frame_time) - now);
-      time = now;
+      time = chr::high_resolution_clock::now();
     }
   });
   
-  while (cin.get() != '\e');
+  while (cin.get() != '\033');
   run_flag = false;
   render.join();
   cv::destroyAllWindows();

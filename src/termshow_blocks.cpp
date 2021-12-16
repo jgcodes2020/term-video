@@ -11,21 +11,25 @@
 #include "badapple/loop.hpp"
 #include <badapple/termshow.hpp>
 #include <badapple/termutils.hpp>
-#include <opencv2/core.hpp>
-#include <opencv2/core/matx.hpp>
-#include <opencv2/highgui.hpp>
 #include <opencv2/opencv.hpp>
 
 using std::string, std::string_view, std::cout, std::clog;
 using namespace std::string_literals;
 namespace {
-  string block_char(
-    const cv::Mat& frame, size_t block_x,
-    size_t block_y) {
-    cv::Vec3i a = frame.at<cv::Vec3b>(block_y, block_x);
-    cv::Vec3i b = frame.at<cv::Vec3b>(block_y + 1, block_x);
-    
-    return fmt::format("\e[38;2;{};{};{}m\e[48;2;{};{};{}m▀", a[2], a[1], a[0], b[2], b[1], b[0]);
+  bool check_in_bounds(const cv::Mat& frame, size_t x, size_t y) {
+    return (x < frame.cols) & (y < frame.rows);
+  }
+  string block_char(const cv::Mat& frame, size_t block_x, size_t block_y) {
+    cv::Vec3i a = check_in_bounds(frame, block_x, block_y + 0) ?
+      frame.at<cv::Vec3b>(block_y + 0, block_x) :
+      cv::Vec3b(0, 0, 0);
+    cv::Vec3i b = check_in_bounds(frame, block_x, block_y + 1) ?
+      frame.at<cv::Vec3b>(block_y + 1, block_x) :
+      cv::Vec3b(0, 0, 0);
+
+    return fmt::format(
+      "\e[38;2;{};{};{}m\e[48;2;{};{};{}m▀", a[2], a[1], a[0], b[2], b[1],
+      b[0]);
   }
   thread_local string termshow_fb;
 }  // namespace
@@ -34,7 +38,7 @@ namespace term {
   void termshow(const cv::Mat& frame, uint32_t width, uint32_t height) {
     // std::cerr << type2str(frame.type()) << "\n";
     cv::Mat frame2;
-    
+
     double fwidth  = frame.cols;
     double fheight = frame.rows;
     double swidth  = width;
@@ -50,7 +54,7 @@ namespace term {
       frame, frame2, cv::Size(), scale_factor, scale_factor, interp_flag);
 
     term::move_to(1, 1);
-    
+
     termshow_fb.clear();
     for (size_t line = 0; line < height; line++) {
       for (size_t col = 0; col < width; col++) {

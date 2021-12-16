@@ -13,14 +13,10 @@ add_executable(main
   src/termutils.cpp
   src/termshow_blocks.cpp
 )
-add_executable(tester
-  src/video-reader.cpp
-)
 target_include_directories(main
   PUBLIC include
 )
 target_link_libraries(main CONAN_PKG::opencv CONAN_PKG::fmt)
-target_link_libraries(tester CONAN_PKG::opencv CONAN_PKG::fmt)
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
   target_link_libraries(main pthread)
 endif()
